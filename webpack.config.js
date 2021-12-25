@@ -1,20 +1,111 @@
 const path = require('path')
-// const ExtractTextPlugin = require('extract-text-webpack-plugin')
+const fs = require('fs');
 const HtmlWebpackPlugin = require('html-webpack-plugin')
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 
+const pagesFolder = __dirname+'/src/pages/';
+var hbsPages = [];
+var files = fs.readdirSync(pagesFolder);
+
+files.forEach(file => {
+    if(!fs.lstatSync(pagesFolder + file).isFile()) return;
+    
+    if(!path.extname(pagesFolder + file) == ".hbs") return;      
+
+    hbsPages.push(new HtmlWebpackPlugin({
+      title: path.parse(pagesFolder + file).name,
+      template: "src/pages/"+file,
+      filename:  path.parse(pagesFolder + file).name + ".html",
+      minify: false
+    }));
+});
+
 module.exports = {
-  entry: './src/styles.css',
+  entry: [
+    './src/js/main.js',
+    './src/scss/style.scss'
+  ],
   mode: process.env.NODE_ENV,
+
+  stats: {
+    warnings: false,
+  },
+
+  performance: {
+      hints: false
+  },
+
+  output: {
+    filename: "js/[name].js",
+    path: path.resolve(__dirname, "./dist")
+  },
+  
+  devtool: "source-map",
+
   module: {
     rules: [
       {
-        test: /\.css$/,  
+          test: /\.hbs$/,
+          loader: "handlebars-loader",
+          options: {
+              inlineRequires: "/assets/",                    
+          },
+      },
+
+      { 
+          test: /\.(jpe?g|png|gif|svg)$/i, 
+          use: [{
+              loader: 'file-loader',
+              options: {
+              name: '[path][name].[ext]',
+              esModule: false,
+              }
+            }],
+      },
+
+      {
+        test: /\/assets\/vendors\//i, 
+        use: [{
+              loader: 'file-loader',
+              options: {
+              name: '[path][name].[ext]',
+              esModule: false,
+              }
+            }],
+      },
+
+      {
+          test: /\.js$/,
+          exclude: /(node_modules)/,
+          use: {
+              loader: "babel-loader",                
+          }
+      },                    
+
+      {
+          test: /\.(scss)$/,
           use: [
-            MiniCssExtractPlugin.loader,
-            { loader: 'css-loader', options: { importLoaders: 1 } },
-            'postcss-loader',
-          ],      
+              MiniCssExtractPlugin.loader,                  
+              {
+                  loader: "css-loader",
+                  options: {
+                      importLoaders: 2,
+                      sourceMap: true,
+                      url: true,
+                  }
+              },
+              {
+                  loader: 'postcss-loader',
+                  options: {
+                      postcssOptions: {
+                          plugins: [
+                              'autoprefixer',
+                          ]
+                      }
+                  }
+              },
+              'sass-loader'
+          ],
       },
     ],
   },
@@ -22,12 +113,35 @@ module.exports = {
     new MiniCssExtractPlugin({
       filename: "css/[name].css",
       chunkFilename: "[id].css",
-      // disable: process.env.NODE_ENV === 'development',
     }),    
-
-    new HtmlWebpackPlugin({
-      filename: 'index.html',
-      template: 'src/index.html',
-    }),
+    ...hbsPages  
   ],
+
+  optimization: {
+    runtimeChunk: false,
+    splitChunks: {
+      chunks: 'all',         
+      cacheGroups: {            
+        styles: {
+            name(module){
+                try{
+                    let packageName = module._identifier.split("!");                    
+                    return path.parse(packageName[packageName.length-1]).name;
+                }catch(e){
+                    return module;
+                }
+            },
+            test: /\.s?css$/,           
+        },
+        vendor: {
+          test: /[\\/]node_modules[\\/]/,
+          name(module) {
+            const packageName = module.context.match(/[\\/]node_modules[\\/](.*?)([\\/]|$)/)[1];
+  
+            return `${packageName.replace('@', '')}`;
+          },
+        },
+      },
+    },
+  }
 }
